@@ -15,6 +15,9 @@ concurrency:
 
 permissions:
   contents: read
+  # gitleaks-action lists the PR's commits to scope its scan. On a private repo the
+  # default GITHUB_TOKEN does not carry that read, and the action dies on a 403.
+  pull-requests: read
 
 jobs:
   # ── 0. Dependency audit ─────────────────────────────────────────────────────
