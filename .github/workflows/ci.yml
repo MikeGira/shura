@@ -1,0 +1,93 @@
+name: CI — Security + Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: '0 9 * * 1'  # Weekly Monday 9am UTC — dependency audit
+  workflow_dispatch:       # On-demand run; gitleaks does a full-history scan on this event
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # gitleaks-action lists the PR's commits to scope its scan. On a private repo the
+  # default GITHUB_TOKEN does not carry that read, and the action dies on a 403.
+  pull-requests: read
+
+jobs:
+  # ── 0. Dependency audit ─────────────────────────────────────────────────────
+  dependency-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
+  # ── 0b. Workflow validation ─────────────────────────────────────────────────
+  # Catches invalid workflow YAML (bad indentation, unknown trigger events, broken
+  # expressions) on the PR — before it reaches master as a silent 0-second startup failure.
+  workflow-lint:
+    name: Workflow Lint (actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run actionlint
+        env:
+          ACTIONLINT_VERSION: '1.7.12'
+        run: |
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o actionlint.tar.gz
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color -shellcheck=
+
+  # ── 1. Secret detection ─────────────────────────────────────────────────────
+  secret-scan:
+    name: Secret Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # NOTE: no CodeQL job. This repository is private and GitHub Advanced Security is not
+  # available on the account, so `github/codeql-action` would fail on every run. Add the
+  # job from taskpilot's ci.yml verbatim if the repo is ever made public.
+
+  # ── 2. Build + lint + type check ────────────────────────────────────────────
+  build:
+    name: Build + TypeCheck + Lint
+    runs-on: ubuntu-latest
+    needs: [secret-scan]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: TypeScript check
+        run: npm run typecheck
+      - name: ESLint
+        run: npm run lint
+      - name: Next.js build (placeholder env vars — none are real secrets)
+        run: npm run build
+        env:
+          NEXT_PUBLIC_APP_URL: https://shura.makinyx.com
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: anon-key-placeholder-not-a-secret
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+          ANTHROPIC_API_KEY: sk-ant-placeholder
