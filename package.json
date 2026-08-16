@@ -43,6 +43,7 @@
     "js-yaml": "^4.3.0",
     "sharp": "^0.35.3",
     "brace-expansion@^1.1.0": "^1.1.16",
-    "brace-expansion@^5.0.0": "^5.0.8"
+    "brace-expansion@^5.0.0": "^5.0.8",
+    "nanoid": "^3.3.18"
   }
 }

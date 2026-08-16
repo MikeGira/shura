@@ -31,7 +31,13 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
-      - run: npm audit --audit-level=high
+      # Scoped to production dependencies on purpose. A blanket `npm audit --audit-level=high`
+      # is one boolean over every package, so a single dev-only advisory with no compatible fix
+      # red-lines every branch — including the Dependabot security PRs that fix the genuinely
+      # reachable findings. TaskPilot spent weeks deadlocked that way before scripts/audit-gate.js
+      # replaced it there; this is the same guard at the size this repo warrants. Dev-tooling
+      # advisories still surface through Dependabot alerts, they just do not block the build.
+      - run: npm audit --omit=dev --audit-level=high
 
   # ── 0b. Workflow validation ─────────────────────────────────────────────────
   # Catches invalid workflow YAML (bad indentation, unknown trigger events, broken
